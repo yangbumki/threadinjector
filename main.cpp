@@ -11,7 +11,7 @@ int main(void) {
 	setlocale(LC_ALL, "");
 	ti threadInjector;
 
-	threadInjector.SetThreadInjection(L"notepad.exe", ThreadProc);
+	threadInjector.SetThreadInjectionTest(L"notepad.exe", ThreadProc);
 
 	return 0;
 };

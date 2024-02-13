@@ -7,6 +7,15 @@
 #define BUFSIZE		1024
 #define	RET			0x3C
 
+typedef struct CreateThreadArgument {
+	_In_opt_ LPSECURITY_ATTRIBUTES lpThreadAttributes;
+	_In_ SIZE_T dwStackSize;
+	_In_ LPTHREAD_START_ROUTINE lpStartAddress;
+	_In_opt_ __drv_aliasesMem LPVOID lpParameter;
+	_In_ DWORD dwCreationFlags;
+	_Out_opt_ LPDWORD lpThreadId;
+}ctarg;
+
 typedef class THREAD_INEJECTOR {
 private:
 	WCHAR exeName[BUFSIZE] = { 0, };
@@ -89,6 +98,11 @@ public:
 	~THREAD_INEJECTOR() {
 	};
 
+	void SetThreadFuncSize(void* f1, void* f2) {
+		auto result = (DWORD)f2 - (DWORD)f1;
+		this->threadSize = result;
+	};
+
 	void SetExeName(const WCHAR* name) {
 		memset(this->exeName, 0, BUFSIZE);
 		wcscpy_s(this->exeName, name);
@@ -108,13 +122,48 @@ public:
 
 		if (remoteAllocAddr != NULL) WarningMessage("remoteAllocAddr is not invalid");
 		if (!GetFunctionSize()) ErrorMessage("GetFunctionSize()");
-		remoteAllocAddr = VirtualAllocEx(process, NULL, threadSize, MEM_COMMIT, PAGE_READWRITE);
+		remoteAllocAddr = VirtualAllocEx(process, NULL, threadSize, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
 		if (remoteAllocAddr == NULL) ErrorMessage("VirtualAllocEx()");
 
 		if (!WriteProcessMemory(this->process, remoteAllocAddr, threadFunc, threadSize, NULL)) ErrorMessage("WriteProcessMemory()");
 
 		if (remoteThread != NULL) ErrorMessage("RemoteThread is not invalid");
-		remoteThread = CreateRemoteThreadEx(this->process, NULL, 0, (LPTHREAD_START_ROUTINE)remoteAllocAddr, NULL, 0, 0,NULL);
+		remoteThread = CreateRemoteThreadEx(this->process, NULL, 0, (LPTHREAD_START_ROUTINE)remoteAllocAddr, NULL, 0, 0, NULL);
+		if (remoteThread == NULL) ErrorMessage("CreateRemoteThread()");
+
+		WaitForSingleObject(remoteThread, INFINITY);
+
+		return TRUE;
+	};
+
+	BOOL SetThreadInjectionTest(const WCHAR* eName, LPTHREAD_START_ROUTINE func) {
+		if (!SetRemoteThreadFunction(func)) ErrorMessage("SetRemoteThreadFunction()");
+		if (!GetProcess(eName)) ErrorMessage("GetProcess()");
+
+		if (process != NULL) WarningMessage("Process is not invalid");
+		process = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pe32.th32ProcessID);
+		if (process == NULL) ErrorMessage("OpenProcess()");
+
+		if (remoteAllocAddr != NULL) WarningMessage("remoteAllocAddr is not invalid");
+		if (!GetFunctionSize()) ErrorMessage("GetFunctionSize()");
+		remoteAllocAddr = VirtualAllocEx(process, NULL, threadSize, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+		if (remoteAllocAddr == NULL) ErrorMessage("VirtualAllocEx()");
+		if (!WriteProcessMemory(this->process, remoteAllocAddr, threadFunc, threadSize, NULL)) ErrorMessage("WriteProcessMemory()");
+
+		LPVOID remoteAllocAddr2 = NULL;
+		CreateThreadArgument cta = { 0, };
+		cta.lpStartAddress = (LPTHREAD_START_ROUTINE)remoteAllocAddr;
+		remoteAllocAddr2 = VirtualAllocEx(process, NULL, sizeof(cta), MEM_COMMIT, PAGE_READWRITE);
+		if (remoteAllocAddr2 == NULL) ErrorMessage("VirtualAllocEx() - 2");
+		if (!WriteProcessMemory(process, remoteAllocAddr2, (LPCVOID)&cta, sizeof(cta), NULL)) ErrorMessage("WriteProcessMemory() - 2");
+
+		HMODULE kernel32 = GetModuleHandleA("kernel32.dll");
+		if (kernel32 == NULL) ErrorMessage("GetModuleHandleA()");
+		FARPROC SetCreateThread = GetProcAddress(kernel32, "CreateThread");
+		if (SetCreateThread == NULL) ErrorMessage("GetProcAddress()");
+
+		if (remoteThread != NULL) ErrorMessage("RemoteThread is not invalid");
+		remoteThread = CreateRemoteThreadEx(this->process, NULL, 0, (LPTHREAD_START_ROUTINE)SetCreateThread, remoteAllocAddr2, 0, 0, NULL);
 		if (remoteThread == NULL) ErrorMessage("CreateRemoteThread()");
 
 		WaitForSingleObject(remoteThread, INFINITY);
