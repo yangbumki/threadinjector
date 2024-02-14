@@ -122,7 +122,7 @@ public:
 
 		if (remoteAllocAddr != NULL) WarningMessage("remoteAllocAddr is not invalid");
 		if (!GetFunctionSize()) ErrorMessage("GetFunctionSize()");
-		remoteAllocAddr = VirtualAllocEx(process, NULL, threadSize, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+		remoteAllocAddr = VirtualAllocEx(process, NULL, threadSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 		if (remoteAllocAddr == NULL) ErrorMessage("VirtualAllocEx()");
 
 		if (!WriteProcessMemory(this->process, remoteAllocAddr, threadFunc, threadSize, NULL)) ErrorMessage("WriteProcessMemory()");
@@ -150,21 +150,28 @@ public:
 		if (remoteAllocAddr == NULL) ErrorMessage("VirtualAllocEx()");
 		if (!WriteProcessMemory(this->process, remoteAllocAddr, threadFunc, threadSize, NULL)) ErrorMessage("WriteProcessMemory()");
 
-		LPVOID remoteAllocAddr2 = NULL;
+		//CreateThread 내부 인자값에 모두 전달이아니라 특정 레지스터에만 전달됨
+		/*LPVOID remoteAllocAddr2 = NULL;
 		CreateThreadArgument cta = { 0, };
 		cta.lpStartAddress = (LPTHREAD_START_ROUTINE)remoteAllocAddr;
 		remoteAllocAddr2 = VirtualAllocEx(process, NULL, sizeof(cta), MEM_COMMIT, PAGE_READWRITE);
 		if (remoteAllocAddr2 == NULL) ErrorMessage("VirtualAllocEx() - 2");
-		if (!WriteProcessMemory(process, remoteAllocAddr2, (LPCVOID)&cta, sizeof(cta), NULL)) ErrorMessage("WriteProcessMemory() - 2");
+		if (!WriteProcessMemory(process, remoteAllocAddr2, (LPCVOID)&cta, sizeof(cta), NULL)) ErrorMessage("WriteProcessMemory() - 2");*/
 
+		//CreateThread 불러오는 함수
 		HMODULE kernel32 = GetModuleHandleA("kernel32.dll");
 		if (kernel32 == NULL) ErrorMessage("GetModuleHandleA()");
 		FARPROC SetCreateThread = GetProcAddress(kernel32, "CreateThread");
 		if (SetCreateThread == NULL) ErrorMessage("GetProcAddress()");
 
 		if (remoteThread != NULL) ErrorMessage("RemoteThread is not invalid");
-		remoteThread = CreateRemoteThreadEx(this->process, NULL, 0, (LPTHREAD_START_ROUTINE)SetCreateThread, remoteAllocAddr2, 0, 0, NULL);
+		remoteThread = CreateRemoteThreadEx(this->process, NULL, 0, (LPTHREAD_START_ROUTINE)SetCreateThread, remoteAllocAddr, 0, 0, NULL);
 		if (remoteThread == NULL) ErrorMessage("CreateRemoteThread()");
+
+		//RemoteThreadEx로 직접 불러오는 함수
+		/*if (remoteThread != NULL) ErrorMessage("RemoteThread is not invalid");
+		remoteThread = CreateRemoteThreadEx(this->process, NULL, 0, (LPTHREAD_START_ROUTINE)this->remoteAllocAddr, NULL, STACK_SIZE_PARAM_IS_A_RESERVATION, 0, NULL);
+		if (remoteThread == NULL) ErrorMessage("CreateRemoteThread()");*/
 
 		WaitForSingleObject(remoteThread, INFINITY);
 
